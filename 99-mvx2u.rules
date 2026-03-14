@@ -1,0 +1,5 @@
+# Shure MVX2U Digital Audio Interface
+# Grants access to /dev/hidrawN for members of the plugdev group.
+# Install to: /etc/udev/rules.d/99-mvx2u.rules
+# Then run: sudo udevadm control --reload-rules && sudo udevadm trigger
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="14ed", ATTRS{idProduct}=="1013", MODE="0660", GROUP="plugdev"
