@@ -45,7 +45,7 @@ fn bool_span(val: bool) -> Span<'static> {
 
 /// Entry point called once per frame from main.
 pub fn draw(f: &mut Frame, app: &App) {
-    let size = f.size();
+    let size = f.area();
 
     // Background
     f.render_widget(Block::default().style(Style::default().bg(C_BG)), size);
@@ -1440,7 +1440,11 @@ fn draw_info_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "  shurectl — open-source Shure device configurator",
+            concat!(
+                "  shurectl v",
+                env!("CARGO_PKG_VERSION"),
+                " — open-source Shure device configurator"
+            ),
             Style::default().fg(C_DIM),
         )),
         Line::from(Span::styled(
