@@ -53,6 +53,7 @@ src/
   app.rs        # Application state: Tab, Focus, DeviceState, DeviceAction events
   device.rs     # hidapi wrapper: open MVX2U, send/receive HID reports
   meter.rs      # cpal audio capture: real-time dBFS metering, RollingWindow, PeakWindow
+  presets.rs    # Host-side preset storage: TOML serialisation, load/save/delete, PresetSlot
   protocol.rs   # Packet encoding, CRC-16/ANSI, all command constructors, apply_response()
   ui.rs         # ratatui rendering: all 5 tabs + help overlay
 ```
@@ -152,6 +153,34 @@ into `App`, shared via `Arc`:
 `start_meter()` returns a `MeterStatus` enum. The caller must keep the `Stream` inside
 `MeterStatus::Running` alive — dropping it stops capture. The meter is not started in demo mode.
 
+### Preset Storage
+
+`presets.rs` implements host-side preset management. Presets are stored as TOML files in
+`~/.config/shurectl/presets/`, with 4 fixed slots named `preset_1.toml`–`preset_4.toml`.
+
+Key design decisions:
+- **Mirror types**: `presets.rs` defines separate `Ser*` enums (`SerInputMode`, `SerMicPosition`,
+  etc.) with `#[derive(Serialize, Deserialize)]`. Protocol types in `protocol.rs` stay free of
+  serde concerns. Stable on-disk format is decoupled from internal enum evolution.
+- **`PresetSlot`**: captures all configurable DSP settings from `DeviceState` — every field
+  that can be sent to the MVX2U over HID. Hardware-identity fields (`serial_number`,
+  `firmware_version`) are intentionally excluded.
+- **`PresetSlot::from_device_state()`** — snapshot live state into a slot.
+- **`PresetSlot::apply_to_device_state()`** — restore a slot onto `DeviceState`, preserving identity fields.
+- **`load_all_presets()`** — loads all 4 slots at startup; missing files produce `None` entries.
+- **`dirs_next::config_dir()`** — resolves `~/.config/` on Linux; falls back to `$HOME/.config/`
+  if `dirs-next` returns `None`.
+
+`DeviceAction` preset variants (handled in `main.rs::apply_action()`):
+- `SavePreset(usize)` — snapshot current state, write TOML, update `app.presets[i]`
+- `LoadPreset(usize)` — call `apply_to_device_state()`, send all SET commands to device
+- `DeletePreset(usize)` — remove the TOML file, set `app.presets[i] = None`
+- `PersistPresetName(usize)` — write the already-in-memory-updated name back to disk
+
+Preset name editing is handled in `main.rs::handle_key()`, not in `toggle_focused()`.
+When `app.editing_preset_name` is `true`, character keys append to the name and `Enter`
+commits (fires `PersistPresetName`), while `Esc` cancels without saving.
+
 ### Demo Mode
 
 `--demo` runs with `device: None`. `send_if_connected()` silently succeeds when
@@ -160,13 +189,17 @@ This is intentional: demo mode should always be fully navigable.
 
 ### Key Crates in Use
 
-- `ratatui 0.26` — TUI rendering; use `Frame::render_widget()`, not direct buffer writes
-- `crossterm 0.27` — terminal backend and key events; `KeyEventKind::Press` only
+- `ratatui 0.30` — TUI rendering; use `Frame::render_widget()`, not direct buffer writes
+- `crossterm 0.29` — terminal backend and key events; `KeyEventKind::Press` only
 - `hidapi 2.4` (linux-native feature) — HID device open/read/write via `/dev/hidrawN`
-- `cpal 0.15` — audio capture for the input level meter; default input device only
+- `cpal 0.17` — audio capture for the input level meter; default input device only
 - `libc 0.2` — stderr suppression during cpal ALSA/JACK probing (`dup`/`dup2`)
 - `anyhow` — all fallible functions return `anyhow::Result`
-- `clap 4.4` — CLI argument parsing; `derive` feature only
+- `clap 4.5` — CLI argument parsing; `derive` feature only
+- `serde 1` (with `derive` feature) — serialisation traits for preset TOML files
+- `toml 0.8` — TOML serialisation/deserialisation for preset files
+- `dirs-next 2.0` — platform config directory resolution (`~/.config/` on Linux)
+- `tempfile 3` (dev-dependency) — hermetic temp directories in `presets.rs` tests
 
 ---
 
