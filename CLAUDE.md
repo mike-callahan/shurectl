@@ -1,9 +1,9 @@
 # shurectl — Project Instructions
 
 The goal of this project is to build and maintain **shurectl**, an open-source terminal UI
-configurator for the Shure MVX2U XLR-to-USB audio interface on Linux. It replaces the
-Windows/Mac-only ShurePlus MOTIV Desktop app by communicating with the device directly over
-USB HID.
+configurator for Shure USB audio interfaces (currently the **MVX2U** and **MV6**) on Linux
+and macOS. It replaces the Windows/Mac-only ShurePlus MOTIV Desktop app by communicating
+with devices directly over USB HID.
 
 This is a Rust project. Operate as a senior Rust developer: write clean, readable, maintainable
 code. Avoid clever abstractions. The simple, obvious solution is almost always correct.
