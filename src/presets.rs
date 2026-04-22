@@ -126,6 +126,33 @@ impl PresetSlot {
         state.mv6_gain_locked = self.mv6_gain_locked;
     }
 
+    /// Format the denoiser state as a display string.
+    fn denoiser_str(&self) -> &'static str {
+        if self.denoiser_enabled {
+            "Denoiser on"
+        } else {
+            "Denoiser off"
+        }
+    }
+
+    /// Format the popper stopper state as a display string.
+    fn popper_str(&self) -> &'static str {
+        if self.popper_stopper_enabled {
+            "Popper on"
+        } else {
+            "Popper off"
+        }
+    }
+
+    /// Format the tone value as a display string.
+    fn tone_str(&self) -> String {
+        match self.tone {
+            0 => "Natural".to_string(),
+            t if t > 0 => format!("{}% Bright", t as i32 * 10),
+            t => format!("{}% Dark", (t as i32 * 10).abs()),
+        }
+    }
+
     /// One-line summary of the key settings for display in the TUI.
     ///
     /// The model is needed because MVX2U and MV6 have different configurable
@@ -139,25 +166,42 @@ impl PresetSlot {
 
         match model {
             DeviceModel::Mv6 => {
-                let denoiser_str = if self.denoiser_enabled {
-                    "Denoiser on"
-                } else {
-                    "Denoiser off"
-                };
-                let popper_str = if self.popper_stopper_enabled {
-                    "Popper on"
-                } else {
-                    "Popper off"
-                };
-                let tone_str = match self.tone {
-                    0 => "Natural".to_string(),
-                    t if t > 0 => format!("{}% Bright", t as i32 * 10),
-                    t => format!("{}% Dark", (t as i32 * 10).abs()),
-                };
+                let denoiser_str = self.denoiser_str();
+                let popper_str = self.popper_str();
+                let tone_str = self.tone_str();
                 format!(
                     "{}dB · {denoiser_str} · {popper_str} · {hpf_str} · Tone: {tone_str}",
                     self.gain_db
                 )
+            }
+            DeviceModel::Mvx2uGen2 => {
+                let phantom_str = if self.phantom_power {
+                    "48V on"
+                } else {
+                    "48V off"
+                };
+                let denoiser_str = self.denoiser_str();
+                let popper_str = self.popper_str();
+                let tone_str = self.tone_str();
+                match InputMode::from(self.mode) {
+                    InputMode::Auto => {
+                        format!(
+                            "Auto · {phantom_str} · {denoiser_str} · {popper_str} · Tone: {tone_str}"
+                        )
+                    }
+                    InputMode::Manual => {
+                        let comp_str = CompressorPreset::from(self.compressor).to_string();
+                        let limiter_str = if self.limiter_enabled {
+                            "Limiter on"
+                        } else {
+                            "Limiter off"
+                        };
+                        format!(
+                            "Manual · {}dB · {limiter_str} · Comp: {comp_str} · {phantom_str} · {denoiser_str} · {popper_str} · {hpf_str}",
+                            self.gain_db
+                        )
+                    }
+                }
             }
             DeviceModel::Mvx2u => {
                 let phantom_str = if self.phantom_power {
@@ -450,8 +494,9 @@ impl From<SerHpfFrequency> for HpfFrequency {
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct SerEqBand {
     pub enabled: bool,
-    /// Gain in dB, range −8..+6.
-    pub gain_db: i8,
+    /// Gain in tenths of dB, range −80..+60.
+    /// Stored as i16 so presets round-trip at 0.5 dB resolution for Gen 2.
+    pub gain_db: i16,
 }
 
 impl From<EqBand> for SerEqBand {
@@ -495,11 +540,11 @@ mod tests {
             eq_bands: [
                 EqBand {
                     enabled: true,
-                    gain_db: 4,
+                    gain_db: 40, // +4.0 dB in tenths
                 },
                 EqBand {
                     enabled: false,
-                    gain_db: -2,
+                    gain_db: -20, // -2.0 dB in tenths
                 },
                 EqBand {
                     enabled: true,
@@ -507,11 +552,11 @@ mod tests {
                 },
                 EqBand {
                     enabled: false,
-                    gain_db: 6,
+                    gain_db: 60, // +6.0 dB in tenths
                 },
                 EqBand {
                     enabled: true,
-                    gain_db: -8,
+                    gain_db: -80, // -8.0 dB in tenths
                 },
             ],
             locked: false,
@@ -550,8 +595,8 @@ mod tests {
         assert_eq!(decoded.name, "My Preset");
         assert_eq!(decoded.gain_db, 36);
         assert!(decoded.muted);
-        assert_eq!(decoded.eq_bands[0].gain_db, 4);
-        assert_eq!(decoded.eq_bands[4].gain_db, -8);
+        assert_eq!(decoded.eq_bands[0].gain_db, 40); // +4.0 dB in tenths
+        assert_eq!(decoded.eq_bands[4].gain_db, -80); // -8.0 dB in tenths
         assert!(decoded.denoiser_enabled);
         assert!(!decoded.popper_stopper_enabled);
         assert_eq!(decoded.tone, -5);
@@ -579,7 +624,7 @@ mod tests {
         assert_eq!(target.compressor, CompressorPreset::Medium);
         assert_eq!(target.hpf, HpfFrequency::Hz75);
         assert!(target.eq_enabled);
-        assert_eq!(target.eq_bands[0].gain_db, 4);
+        assert_eq!(target.eq_bands[0].gain_db, 40); // +4.0 dB in tenths
         assert!(target.denoiser_enabled);
         assert!(!target.popper_stopper_enabled);
         assert!(target.mute_btn_disabled);
