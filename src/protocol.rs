@@ -415,33 +415,33 @@ pub struct DeviceState {
     /// Playback mix: 0=100% mic, 100=100% playback. MV7+ second mix channel.
     /// Uses same FEAT_MIX address as mic mix but with prefix=0x03 on the wire.
     pub playback_mix: u8,
-    /// Reverb applied to speaker/headphone output. MV7+ only.
+    /// Reverb applied to speaker/headphone output.
     pub reverb_on_output: bool,
-    /// Reverb applied to direct monitoring. MV7+ only.
+    /// Reverb applied to direct monitoring.
     pub reverb_monitoring: bool,
-    /// Reverb room type. MV7+ only.
+    /// Reverb room type.
     pub reverb_type: ReverbType,
-    /// Reverb intensity 0–100. MV7+ only.
+    /// Reverb intensity 0–100.
     pub reverb_intensity: u8,
-    /// LED animation behavior. MV7+ only.
+    /// LED animation behavior.
     pub led_behavior: LedBehavior,
-    /// LED strip brightness. MV7+ only.
+    /// LED strip brightness.
     pub led_brightness: LedBrightness,
-    /// Color theme for Live behavior. MV7+ only.
+    /// Color theme for Live behavior.
     pub led_live_theme: LedLiveTheme,
-    /// Color theme for Solid behavior. MV7+ only.
+    /// Color theme for Solid behavior.
     pub led_solid_theme: LedSolidTheme,
-    /// Color theme for Pulsing behavior. MV7+ only.
+    /// Color theme for Pulsing behavior.
     pub led_pulsing_theme: LedPulsingTheme,
-    /// Custom Solid LED color [R, G, B]. MV7+ sub-addr 0xA2. MV7+ only.
+    /// Custom Solid LED color [R, G, B].
     pub led_solid_rgb: [u8; 3],
-    /// Custom Pulsing LED color [R, G, B]. MV7+ sub-addr 0xA3. MV7+ only.
+    /// Custom Pulsing LED color [R, G, B].
     pub led_pulsing_rgb: [u8; 3],
-    /// Live Custom edge zone color [R, G, B]. MV7+ sub-addr 0x98. MV7+ only.
+    /// Live Custom edge zone color [R, G, B].
     pub led_live_edge_rgb: [u8; 3],
-    /// Live Custom middle zone color [R, G, B]. MV7+ sub-addr 0x99. MV7+ only.
+    /// Live Custom middle zone color [R, G, B].
     pub led_live_middle_rgb: [u8; 3],
-    /// Live Custom interior zone color [R, G, B]. MV7+ sub-addr 0xA0. MV7+ only.
+    /// Live Custom interior zone color [R, G, B].
     pub led_live_interior_rgb: [u8; 3],
 
     /// Device serial number string, populated after connection.
