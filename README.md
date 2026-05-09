@@ -52,11 +52,8 @@ interfaces and microphones on Linux and macOS. Replaces the Windows/Mac-only Shu
 - **Gain Lock** — hardware freeze of the gain control (Manual mode only)
 
 ### MV7+
-- **Monitor Mix** — mic vs. playback blend slider (mic channel)
-- **Playback Mix** — independent playback level slider
-- **Limiter** — enable/disable
-- **Compressor** — Off / Light / Medium / Heavy
-- **High-Pass Filter** — Off / 75 Hz / 150 Hz
+- **Gain range** — 0–36 dB
+- **Tone** — Dark / Natural / Bright
 - **Real-time Denoiser** — enable/disable
 - **Popper Stopper** — enable/disable
 - **Mute Button Disable** — prevent accidental mutes
