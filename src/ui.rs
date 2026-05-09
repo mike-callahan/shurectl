@@ -1193,7 +1193,7 @@ fn draw_main_right(f: &mut Frame, app: &App, area: Rect) {
                     Span::styled(ds.mode.to_string(), Style::default().fg(C_ACCENT)),
                 ]),
                 Line::from(vec![
-                    Span::styled("Gain (knob) : ", Style::default().fg(C_DIM)),
+                    Span::styled("Gain        : ", Style::default().fg(C_DIM)),
                     Span::styled(format!("{} dB", ds.gain_db), Style::default().fg(C_TEXT)),
                 ]),
                 Line::from(vec![
@@ -1236,6 +1236,18 @@ fn draw_main_right(f: &mut Frame, app: &App, area: Rect) {
                 Line::from(vec![
                     Span::styled("HPF         : ", Style::default().fg(C_DIM)),
                     Span::styled(ds.hpf.to_string(), Style::default().fg(C_TEXT)),
+                ]),
+                Line::from(vec![
+                    Span::styled("Limiter     : ", Style::default().fg(C_DIM)),
+                    if ds.limiter_enabled {
+                        Span::styled("ON", Style::default().fg(C_SUCCESS))
+                    } else {
+                        Span::styled("OFF", Style::default().fg(C_DIM))
+                    },
+                ]),
+                Line::from(vec![
+                    Span::styled("Compressor  : ", Style::default().fg(C_DIM)),
+                    Span::styled(ds.compressor.to_string(), Style::default().fg(C_TEXT)),
                 ]),
                 Line::from(""),
                 Line::from(vec![
@@ -1349,6 +1361,14 @@ fn draw_main_right(f: &mut Frame, app: &App, area: Rect) {
                         Span::styled("ON", Style::default().fg(C_SUCCESS))
                     } else {
                         Span::styled("OFF", Style::default().fg(C_DIM))
+                    },
+                ]),
+                Line::from(vec![
+                    Span::styled("Compressor  : ", Style::default().fg(C_DIM)),
+                    if ds.mode == InputMode::Auto {
+                        Span::styled("auto", Style::default().fg(C_DISABLED))
+                    } else {
+                        Span::styled(ds.compressor.to_string(), Style::default().fg(C_TEXT))
                     },
                 ]),
             ]);
@@ -2443,13 +2463,13 @@ fn draw_eq_tab(f: &mut Frame, app: &App, area: Rect) {
 fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
     let ds = &app.device_state;
 
-    let std_cols = Layout::default()
+    let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Ratio(1, 6); 6])
         .margin(1)
         .split(area);
 
-    // Limiter
+    // ── Limiter ───────────────────────────────────────────────────────────────
     let lim_foc = app.focus == Focus::Limiter;
     let lim_p = Paragraph::new(vec![
         Line::from(""),
@@ -2459,13 +2479,30 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "[Enter] toggle",
+            "Prevents clipping by",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(Span::styled(
+            "capping the output",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(Span::styled("level at 0 dBFS.", Style::default().fg(C_DIM))),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[Enter] to toggle",
             Style::default().fg(if lim_foc { C_FOCUS } else { C_DISABLED }),
         )),
     ])
     .block(
         Block::default()
-            .title(Span::styled("  Limiter  ", focused_style(lim_foc)))
+            .title(Span::styled(
+                "  Limiter  ",
+                if lim_foc {
+                    Style::default().fg(C_FOCUS).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(C_TEXT)
+                },
+            ))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(if lim_foc {
@@ -2475,9 +2512,9 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             })
             .padding(Padding::horizontal(1)),
     );
-    f.render_widget(lim_p, std_cols[0]);
+    f.render_widget(lim_p, cols[0]);
 
-    // Compressor
+    // ── Compressor ────────────────────────────────────────────────────────────
     let comp_foc = app.focus == Focus::Compressor;
     let comp_lines: Vec<Line> = [
         CompressorPreset::Off,
@@ -2506,13 +2543,21 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
     .collect();
     let mut comp_content = vec![Line::from("")];
     comp_content.extend(comp_lines);
+    comp_content.push(Line::from(""));
     comp_content.push(Line::from(Span::styled(
-        "[Enter] cycle",
+        "[Enter] to cycle",
         Style::default().fg(if comp_foc { C_FOCUS } else { C_DISABLED }),
     )));
     let comp_p = Paragraph::new(comp_content).block(
         Block::default()
-            .title(Span::styled("  Compressor  ", focused_style(comp_foc)))
+            .title(Span::styled(
+                "  Compressor  ",
+                if comp_foc {
+                    Style::default().fg(C_FOCUS).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(C_TEXT)
+                },
+            ))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(if comp_foc {
@@ -2522,9 +2567,9 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             })
             .padding(Padding::horizontal(1)),
     );
-    f.render_widget(comp_p, std_cols[1]);
+    f.render_widget(comp_p, cols[1]);
 
-    // Denoiser
+    // ── Denoiser ──────────────────────────────────────────────────────────────
     let den_foc = app.focus == Focus::Denoiser;
     let den_p = Paragraph::new(vec![
         Line::from(""),
@@ -2534,7 +2579,16 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "[Enter] toggle",
+            "Reduces background",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(Span::styled(
+            "noise in real time.",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[Enter] to toggle",
             Style::default().fg(if den_foc { C_FOCUS } else { C_DISABLED }),
         )),
     ])
@@ -2550,9 +2604,9 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             })
             .padding(Padding::horizontal(1)),
     );
-    f.render_widget(den_p, std_cols[2]);
+    f.render_widget(den_p, cols[2]);
 
-    // Popper Stopper
+    // ── Popper Stopper ────────────────────────────────────────────────────────
     let pop_foc = app.focus == Focus::PopperStopper;
     let pop_p = Paragraph::new(vec![
         Line::from(""),
@@ -2561,14 +2615,20 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             bool_span(ds.popper_stopper_enabled),
         ]),
         Line::from(""),
+        Line::from(Span::styled("Reduces plosive", Style::default().fg(C_DIM))),
         Line::from(Span::styled(
-            "[Enter] toggle",
+            "sounds (p, b, t).",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[Enter] to toggle",
             Style::default().fg(if pop_foc { C_FOCUS } else { C_DISABLED }),
         )),
     ])
     .block(
         Block::default()
-            .title(Span::styled("  Popper Stop.  ", focused_style(pop_foc)))
+            .title(Span::styled("  Popper Stopper  ", focused_style(pop_foc)))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(if pop_foc {
@@ -2578,9 +2638,9 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             })
             .padding(Padding::horizontal(1)),
     );
-    f.render_widget(pop_p, std_cols[3]);
+    f.render_widget(pop_p, cols[3]);
 
-    // Mute Button Disable
+    // ── Mute Button Disable ───────────────────────────────────────────────────
     let mbd_foc = app.focus == Focus::MuteBtnDisable;
     let mbd_p = Paragraph::new(vec![
         Line::from(""),
@@ -2590,13 +2650,20 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "[Enter] toggle",
+            "Prevents the physical",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(Span::styled("mute button from", Style::default().fg(C_DIM))),
+        Line::from(Span::styled("toggling mute.", Style::default().fg(C_DIM))),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[Enter] to toggle",
             Style::default().fg(if mbd_foc { C_FOCUS } else { C_DISABLED }),
         )),
     ])
     .block(
         Block::default()
-            .title(Span::styled("  Mute Btn  ", focused_style(mbd_foc)))
+            .title(Span::styled("  Mute Button  ", focused_style(mbd_foc)))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(if mbd_foc {
@@ -2606,9 +2673,9 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             })
             .padding(Padding::horizontal(1)),
     );
-    f.render_widget(mbd_p, std_cols[4]);
+    f.render_widget(mbd_p, cols[4]);
 
-    // HPF
+    // ── High-Pass Filter ──────────────────────────────────────────────────────
     let hpf_foc = app.focus == Focus::Hpf;
     let hpf_lines: Vec<Line> = [HpfFrequency::Off, HpfFrequency::Hz75, HpfFrequency::Hz150]
         .iter()
@@ -2632,14 +2699,15 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
         .collect();
     let mut hpf_content = vec![Line::from("")];
     hpf_content.extend(hpf_lines);
+    hpf_content.push(Line::from(""));
     hpf_content.push(Line::from(Span::styled(
-        "[Enter] cycle",
+        "[Enter] to cycle",
         Style::default().fg(if hpf_foc { C_FOCUS } else { C_DISABLED }),
     )));
     let hpf_p = Paragraph::new(hpf_content).block(
         Block::default()
             .title(Span::styled(
-                "  HPF  ",
+                "  High-Pass Filter  ",
                 if hpf_foc {
                     Style::default().fg(C_FOCUS).add_modifier(Modifier::BOLD)
                 } else {
@@ -2655,7 +2723,7 @@ fn draw_mv7plus_dynamics_tab(f: &mut Frame, app: &App, area: Rect) {
             })
             .padding(Padding::horizontal(1)),
     );
-    f.render_widget(hpf_p, std_cols[5]);
+    f.render_widget(hpf_p, cols[5]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3595,23 +3663,23 @@ fn draw_info_tab(f: &mut Frame, app: &App, area: Rect) {
             ("  Mute Button  : ", "Enable / Disable"),
         ],
         DeviceModel::Mv7Plus => &[
-            ("  Gain         : ", "Physical knob (read-only in software)"),
             ("  Denoiser     : ", "On / Off"),
             ("  Popper Stop. : ", "On / Off"),
             (
                 "  Tone         : ",
-                "Dark (-100%) → Natural → Bright (+100%)",
+                "Dark (−100%) → Natural → Bright (+100%)",
             ),
             ("  HPF          : ", "Off / 75 Hz / 150 Hz"),
             ("  Compressor   : ", "Off / Light / Medium / Heavy"),
             ("  Limiter      : ", "On / Off"),
             ("  Mute Button  : ", "Enable / Disable"),
-            ("  Monitor Mix  : ", "0-100% (mic ↔ playback)"),
-            ("  Playback Mix : ", "0-100% (independent second channel)"),
+            ("  Monitor Mix  : ", "0–100% (mic ↔ playback)"),
+            ("  Playback Mix : ", "0–100% (independent second channel)"),
             (
                 "  Reverb       : ",
-                "Plate / Hall / Studio; intensity 0-100%",
+                "Plate / Hall / Studio; intensity 0–100%",
             ),
+            ("  LED Panel    : ", "Behavior / Brightness / Theme / Custom RGB"),
             ("  Auto Level   : ", "On / Off"),
         ],
     };

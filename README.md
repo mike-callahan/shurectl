@@ -52,7 +52,6 @@ interfaces and microphones on Linux and macOS. Replaces the Windows/Mac-only Shu
 - **Gain Lock** — hardware freeze of the gain control (Manual mode only)
 
 ### MV7+
-- **Physical Gain Knob** — read-only display of gain set by the hardware knob (not software-settable)
 - **Monitor Mix** — mic vs. playback blend slider (mic channel)
 - **Playback Mix** — independent playback level slider
 - **Limiter** — enable/disable
@@ -61,10 +60,8 @@ interfaces and microphones on Linux and macOS. Replaces the Windows/Mac-only Shu
 - **Real-time Denoiser** — enable/disable
 - **Popper Stopper** — enable/disable
 - **Mute Button Disable** — prevent accidental mutes
-- **Reverb Output** — enable/disable reverb on the main output
-- **Reverb Monitor** — enable/disable reverb in the headphone monitor mix
-- **Reverb Type** — Plate / Hall / Studio
-- **Reverb Intensity** — 0–100%
+- **Reverb** — output and monitor enable/disable; Type: Plate / Hall / Studio; Intensity: 0–100%
+- **LED Panel** — Behavior (Live / Pulsing / Solid), Brightness (Low / Med / High / Max), theme and custom RGB color per mode
 
 ---
 
@@ -189,28 +186,6 @@ On the **Presets tab**:
 
 ---
 
-<<<<<<< Updated upstream
-=======
-## Architecture
-
-```
-src/
-├── main.rs       — Entry point, event loop, CLI args
-├── app.rs        — Application state, focus/tab navigation, DeviceAction events
-├── device.rs     — hidapi wrapper; open/send/receive for Shure devices
-├── meter.rs      — cpal audio capture; real-time dBFS metering, RollingWindow, PeakWindow
-├── presets.rs    — Host-side preset storage: TOML serialisation, load/save/delete, PresetSlot
-├── protocol.rs   — USB HID packet encoding, CRC-16/ANSI, command constructors, apply_response()
-└── ui.rs         — ratatui TUI rendering (all 5 tabs + help overlay)
-```
-
-All command byte values, feature addresses, and packet structure details are documented inline in `src/protocol.rs`.
-
-> **Note on MV7+ protocol**: The MV7+ feature addresses were derived from usbmon packet captures and may differ across firmware versions. If controls behave unexpectedly on your device, please open an issue with your firmware version and a usbmon capture.
-
----
-
->>>>>>> Stashed changes
 ## Troubleshooting
 
 **"Cannot open device"** — device not found or a permissions issue.

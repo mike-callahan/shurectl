@@ -138,9 +138,8 @@
 //! GET commands use standard framing (HDR_CONSTANT=0x03).
 //!
 //! Shared with MV6 (same addresses, same encoding, HDR_CONST differs for SET):
-//!   Gain (read-only): [0x01, 0x02]  — device pushes gain via [04,02,02] notifications.
-//!                                     There is NO host-initiated SET for gain — the physical
-//!                                     knob controls it. The gain value is still readable via GET.
+//!   Gain:             [0x01, 0x02]  — 16-bit big-endian, units: gain_db * 100, range 0–36 dB.
+//!                                     GET and SET both confirmed. Same encoding as MV6.
 //!   Mute:             [0x01, 0x04]  — 1 byte: 0=unmuted, 1=muted
 //!   HPF:              [0x01, 0x06]  — 1 byte: 0=off, 1=75Hz, 2=150Hz
 //!   Limiter:          [0x01, 0x51]  — 1 byte: 0=off, 1=on
@@ -196,7 +195,6 @@ pub enum DeviceModel {
     Mvx2uGen2,
     Mv6,
     /// USB/XLR dynamic microphone. All SET commands use HDR_CONSTANT=0x00.
-    /// Gain is read-only (physical knob); device pushes gain updates to host.
     Mv7Plus,
 }
 
@@ -1092,39 +1090,44 @@ fn build_packet(seq: u8, cmd: &[u8; 3], payload: &[u8]) -> Vec<u8> {
     pkt
 }
 
-/// Validate a received HID report and extract the feature address and value bytes.
+/// Shared validation and field extraction for all HID response buffers.
 ///
-/// Returns `None` if the buffer is malformed, the header magic is wrong, or
-/// the CRC does not match. On success returns `(feat_addr, value_bytes)`.
-#[must_use]
-pub fn parse_response(buf: &[u8]) -> Option<([u8; 2], Vec<u8>)> {
-    // Minimum: report_id(1) + total_len(1) + header(2) + seq(1) + 0x03(1) +
+/// Returns `(prefix, feat_addr, value_bytes)` on success, `None` if the buffer
+/// is malformed, the header magic is wrong, the CRC does not match, or the
+/// response command type carries no feature data (e.g. CONFIRM).
+///
+/// Layout:
+///   buf[0]      = report ID
+///   buf[1]      = total_len  (contents occupy buf[2..total_len+2])
+///   buf[2..4]   = header magic [0x11, 0x22]
+///   buf[10..13] = response command bytes
+///   buf[13]     = prefix byte (is_mix / lock-class flag)
+///   buf[14..16] = 2-byte feature address
+///   buf[16..total_len] = value bytes
+///   buf[total_len..total_len+2] = CRC-16/ANSI (covers buf[2..total_len])
+fn parse_response_inner(buf: &[u8]) -> Option<(u8, [u8; 2], Vec<u8>)> {
+    // Minimum: report_id(1) + total_len(1) + header(2) + seq(1) + hdr_const(1) +
     //          hdr_end(1) + data_len(1) + data_start(1) + data_len(1) +
     //          cmd(3) + prefix(1) + feat(2) + crc(2) = 18 bytes minimum
     if buf.len() < 18 {
         return None;
     }
 
-    // buf[0] = report ID (0x01)
-    // buf[1] = total_len (length of buf[2..contents_end+2])
     let contents_end = buf[1] as usize;
     if contents_end + 2 > buf.len() {
         return None;
     }
 
-    // Header magic at buf[2..4]
     if buf[2] != HEADER_MAGIC[0] || buf[3] != HEADER_MAGIC[1] {
         return None;
     }
 
-    // CRC check: covers buf[2..contents_end]
     let expected_crc = ((buf[contents_end] as u16) << 8) | buf[contents_end + 1] as u16;
     let actual_crc = crc16_ansi(&buf[2..contents_end]);
     if actual_crc != expected_crc {
         return None;
     }
 
-    // Response type at buf[10..13]
     let resp_type: [u8; 3] = buf[10..13].try_into().ok()?;
     if resp_type != RES_GET_FEAT
         && resp_type != RES_SET_FEAT
@@ -1135,14 +1138,23 @@ pub fn parse_response(buf: &[u8]) -> Option<([u8; 2], Vec<u8>)> {
         return None;
     }
 
-    // buf[13] = prefix byte (is_mix/lock-class flag; ignored for our purposes)
-    // buf[14..16] = feature address
     if buf.len() < 16 {
         return None;
     }
+    let prefix = buf[13];
     let feat_addr: [u8; 2] = buf[14..16].try_into().ok()?;
     let value_bytes = buf[16..contents_end].to_vec();
 
+    Some((prefix, feat_addr, value_bytes))
+}
+
+/// Validate a received HID report and extract the feature address and value bytes.
+///
+/// Returns `None` if the buffer is malformed, the header magic is wrong, or
+/// the CRC does not match. On success returns `(feat_addr, value_bytes)`.
+#[must_use]
+pub fn parse_response(buf: &[u8]) -> Option<([u8; 2], Vec<u8>)> {
+    let (_prefix, feat_addr, value_bytes) = parse_response_inner(buf)?;
     Some((feat_addr, value_bytes))
 }
 
@@ -1153,36 +1165,7 @@ pub fn parse_response(buf: &[u8]) -> Option<([u8; 2], Vec<u8>)> {
 /// Returns `None` on the same conditions as `parse_response`.
 #[must_use]
 pub fn parse_response_with_prefix(buf: &[u8]) -> Option<(u8, [u8; 2], Vec<u8>)> {
-    if buf.len() < 18 {
-        return None;
-    }
-    let contents_end = buf[1] as usize;
-    if contents_end + 2 > buf.len() {
-        return None;
-    }
-    if buf[2] != HEADER_MAGIC[0] || buf[3] != HEADER_MAGIC[1] {
-        return None;
-    }
-    let expected_crc = ((buf[contents_end] as u16) << 8) | buf[contents_end + 1] as u16;
-    let actual_crc = crc16_ansi(&buf[2..contents_end]);
-    if actual_crc != expected_crc {
-        return None;
-    }
-    let resp_type: [u8; 3] = buf[10..13].try_into().ok()?;
-    if resp_type != RES_GET_FEAT
-        && resp_type != RES_SET_FEAT
-        && resp_type != RES_GET_LOCK
-        && resp_type != RES_SET_LOCK
-    {
-        return None;
-    }
-    if buf.len() < 16 {
-        return None;
-    }
-    let prefix = buf[13];
-    let feat_addr: [u8; 2] = buf[14..16].try_into().ok()?;
-    let value_bytes = buf[16..contents_end].to_vec();
-    Some((prefix, feat_addr, value_bytes))
+    parse_response_inner(buf)
 }
 
 // ── Command constructors ──────────────────────────────────────────────────────
@@ -3754,5 +3737,160 @@ mod tests {
             &mut state
         ));
         assert_eq!(state.led_live_interior_rgb, [0xFF, 0x2A, 0x1A]);
+    }
+
+    // ── Missing MV7+ tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn device_model_max_gain_db_mv7_plus() {
+        assert_eq!(DeviceModel::Mv7Plus.max_gain_db(), 36);
+    }
+
+    // ── MV7+ apply_response: LED themes ──────────────────────────────────────
+
+    #[test]
+    fn apply_response_mv7_led_live_theme() {
+        let cases = [
+            (0x00u8, LedLiveTheme::Default),
+            (0x01, LedLiveTheme::Seaside),
+            (0x02, LedLiveTheme::Space),
+            (0x03, LedLiveTheme::Fruity),
+            (0x04, LedLiveTheme::Custom),
+            (0x99, LedLiveTheme::Default), // unknown falls back to Default
+        ];
+        for (byte, expected) in cases {
+            let mut state = DeviceState::default();
+            assert!(apply_response(
+                MV7_FEAT_LED_LIVE_THEME_RESP,
+                &[byte],
+                &mut state
+            ));
+            assert_eq!(state.led_live_theme, expected, "byte {byte:#04x}");
+        }
+    }
+
+    #[test]
+    fn apply_response_mv7_led_solid_theme() {
+        for (byte, expected) in [(0x00u8, LedSolidTheme::Shure), (0x01, LedSolidTheme::Custom)] {
+            let mut state = DeviceState::default();
+            assert!(apply_response(
+                MV7_FEAT_LED_SOLID_THEME_RESP,
+                &[byte],
+                &mut state
+            ));
+            assert_eq!(state.led_solid_theme, expected, "byte {byte:#04x}");
+        }
+    }
+
+    // Note: apply_response_mv7_led_pulsing_theme is intentionally absent.
+    // MV7_FEAT_LED_PULSING_THEME_RESP = [0x00, 0xA6] aliases FEAT_LOCK — the
+    // apply_response lock branch fires first, so pulsing theme is write-only
+    // and cannot be round-tripped through apply_response. This matches the
+    // comment in get_state_mv7_plus() which omits the pulsing theme GET.
+
+    // ── MV7+ apply_response: empty-value guards ───────────────────────────────
+
+    #[test]
+    fn apply_response_mv7_reverb_empty_returns_false() {
+        let mut state = DeviceState::default();
+        assert!(!apply_response(MV7_FEAT_REVERB_OUTPUT, &[], &mut state));
+        assert!(!apply_response(MV7_FEAT_REVERB_TYPE, &[], &mut state));
+        assert!(!apply_response(MV7_FEAT_REVERB_INTENSITY, &[], &mut state));
+        assert!(!apply_response(MV7_FEAT_REVERB_MONITOR, &[], &mut state));
+    }
+
+    #[test]
+    fn apply_response_mv7_led_1byte_features_empty_returns_false() {
+        let mut state = DeviceState::default();
+        assert!(!apply_response(MV7_FEAT_LED_BEHAVIOR_RESP, &[], &mut state));
+        assert!(!apply_response(
+            MV7_FEAT_LED_BRIGHTNESS_RESP,
+            &[],
+            &mut state
+        ));
+        assert!(!apply_response(
+            MV7_FEAT_LED_LIVE_THEME_RESP,
+            &[],
+            &mut state
+        ));
+        assert!(!apply_response(
+            MV7_FEAT_LED_SOLID_THEME_RESP,
+            &[],
+            &mut state
+        ));
+        // MV7_FEAT_LED_PULSING_THEME_RESP aliases FEAT_LOCK — not tested here.
+    }
+
+    #[test]
+    fn apply_response_mv7_led_color_features_short_returns_false() {
+        // Color responses require 4 bytes [0x00, R, G, B]; fewer must return false.
+        let mut state = DeviceState::default();
+        assert!(!apply_response(
+            MV7_FEAT_LED_SOLID_COLOR_RESP,
+            &[0x00, 0xFF],
+            &mut state
+        ));
+        assert!(!apply_response(
+            MV7_FEAT_LED_PULSING_COLOR_RESP,
+            &[0x00, 0xFF],
+            &mut state
+        ));
+        assert!(!apply_response(
+            MV7_FEAT_LED_LIVE_EDGE_RESP,
+            &[0x00, 0xFF],
+            &mut state
+        ));
+        assert!(!apply_response(
+            MV7_FEAT_LED_LIVE_MIDDLE_RESP,
+            &[0x00, 0xFF],
+            &mut state
+        ));
+        assert!(!apply_response(
+            MV7_FEAT_LED_LIVE_INTERIOR_RESP,
+            &[0x00, 0xFF],
+            &mut state
+        ));
+    }
+
+    // ── MV7+ tone encoding ────────────────────────────────────────────────────
+
+    #[test]
+    fn mv7_tone_packet_uses_hdr0_and_encodes_correctly() {
+        for (tone, expected_raw) in [(-10i8, -100i16), (0, 0), (10, 100)] {
+            let pkt = cmd_set_mv7_tone(0, tone);
+            assert_eq!(pkt.len(), PACKET_SIZE);
+            assert_eq!(pkt[5], 0x00, "HDR_CONSTANT must be 0x00");
+            assert_eq!(&pkt[14..16], &MV6_FEAT_TONE, "feature address mismatch");
+            let encoded = i16::from_be_bytes([pkt[16], pkt[17]]);
+            assert_eq!(encoded, expected_raw, "tone encoding mismatch for {tone}");
+        }
+    }
+
+    #[test]
+    fn mv7_tone_clamps_to_range() {
+        let pkt_low = cmd_set_mv7_tone(0, -99);
+        assert_eq!(
+            i16::from_be_bytes([pkt_low[16], pkt_low[17]]),
+            -100,
+            "clamped to -10 * 10"
+        );
+        let pkt_high = cmd_set_mv7_tone(0, 99);
+        assert_eq!(
+            i16::from_be_bytes([pkt_high[16], pkt_high[17]]),
+            100,
+            "clamped to +10 * 10"
+        );
+    }
+
+    // ── MV7+ gain encoding ────────────────────────────────────────────────────
+
+    #[test]
+    fn mv7_gain_packet_uses_hdr0_and_encodes_correctly() {
+        let pkt = cmd_set_mv7_gain(0, 36);
+        assert_eq!(pkt.len(), PACKET_SIZE);
+        assert_eq!(pkt[5], 0x00, "HDR_CONSTANT must be 0x00");
+        assert_eq!(&pkt[14..16], &FEAT_GAIN, "feature address mismatch");
+        let encoded = u16::from_be_bytes([pkt[16], pkt[17]]);
+        assert_eq!(encoded, 36 * 100, "gain must be encoded as gain_db * 100");
     }
 }
